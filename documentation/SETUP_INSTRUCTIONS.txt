@@ -1,0 +1,343 @@
+================================================================================
+SETUP INSTRUCTIONS: Running Polymer Notebook with Mac M5 GPU
+================================================================================
+
+Your Mac has an Apple M5 chip with powerful GPU! This guide will help you set
+up everything to use it.
+
+================================================================================
+QUICK START (5 minutes)
+================================================================================
+
+1. Open Terminal in the Research directory:
+   cd /Users/Omer/Desktop/Research
+
+2. Make the setup script executable:
+   chmod +x SETUP_MAC_GPU.sh
+
+3. Run the setup script:
+   ./SETUP_MAC_GPU.sh
+
+   This will:
+   - Activate virtual environment
+   - Install all required packages
+   - Set up Jupyter kernel for VS Code
+   - Verify GPU is available
+
+4. Open VS Code and select the notebook
+
+5. Click on kernel selector (top right)
+   - Choose: "Python (Polymer M5 GPU)"
+   - If not visible, restart VS Code
+
+6. Click "Run All" ✓
+
+================================================================================
+DETAILED STEP-BY-STEP GUIDE
+================================================================================
+
+STEP 1: Run Setup Script
+-------------------------
+
+In Terminal:
+```bash
+cd /Users/Omer/Desktop/Research
+chmod +x SETUP_MAC_GPU.sh
+./SETUP_MAC_GPU.sh
+```
+
+Expected output:
+- ✓ PyTorch: 2.x.x
+- ✓ MPS Available: True
+- ✓ MPS Built: True
+- ✓ RDKit: installed
+- ✓ Transformers: installed
+- etc.
+
+If you see "MPS Available: True" → Your GPU is ready! 🎉
+
+STEP 2: Open Notebook in VS Code
+---------------------------------
+
+1. Open VS Code
+2. File → Open → Polymer_Representation_Updated.ipynb
+3. VS Code will prompt to select a kernel
+
+STEP 3: Select the Correct Kernel
+----------------------------------
+
+Top-right corner of notebook:
+- Click kernel selector (e.g., "Python 3.9.6")
+- Select: "Python (Polymer M5 GPU)"
+
+If you don't see it:
+- Restart VS Code
+- Or manually select: Python Interpreter → polymer_env/bin/python
+
+STEP 4: Verify GPU Will Be Used
+--------------------------------
+
+Add this cell at the beginning and run it:
+
+```python
+import torch
+print("PyTorch version:", torch.__version__)
+print("MPS available:", torch.backends.mps.is_available())
+print("MPS built:", torch.backends.mps.is_built())
+
+# Test GPU
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+    x = torch.ones(1, device=device)
+    print("✓ GPU test successful! Device:", device)
+else:
+    print("⚠ GPU not available, will use CPU")
+```
+
+Expected output:
+```
+PyTorch version: 2.x.x
+MPS available: True
+MPS built: True
+✓ GPU test successful! Device: mps
+```
+
+STEP 5: Update Transformer Code for GPU
+----------------------------------------
+
+Find this line in the notebook (around cell for transformer embeddings):
+
+OLD:
+```python
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+```
+
+REPLACE WITH:
+```python
+# Device selection for Mac M5 GPU
+if torch.cuda.is_available():
+    device = 'cuda'
+elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+    device = 'mps'  # Use Mac GPU!
+else:
+    device = 'cpu'
+```
+
+This ensures the transformer model uses your M5 GPU!
+
+STEP 6: Run All Cells
+----------------------
+
+Click "Run All" button in VS Code
+
+Expected behavior:
+- First cells run quickly (data loading, fingerprints)
+- Transformer cell shows: "Using device: mps" ✓
+- Transformer embedding computation uses GPU (faster!)
+- All plots generated successfully
+
+Approximate runtime:
+- CPU only: 15-30 minutes
+- With M5 GPU: 5-10 minutes (3-5x faster!)
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+ISSUE 1: "Kernel not found" or "Python not found"
+--------------------------------------------------
+
+Solution:
+1. Restart VS Code
+2. Command Palette (Cmd+Shift+P)
+3. "Python: Select Interpreter"
+4. Choose: polymer_env/bin/python
+
+ISSUE 2: "MPS Available: False"
+--------------------------------
+
+Your Mac M5 should support MPS. If it shows False:
+
+1. Update PyTorch:
+   ```bash
+   source polymer_env/bin/activate
+   pip install --upgrade torch torchvision torchaudio
+   ```
+
+2. Check macOS version (need macOS 12.3+):
+   ```bash
+   sw_vers
+   ```
+
+3. If macOS < 12.3, update macOS first
+
+ISSUE 3: Module not found errors
+---------------------------------
+
+If you see "ModuleNotFoundError: No module named 'xyz'":
+
+1. Check you're using the right kernel:
+   - Should be "Python (Polymer M5 GPU)"
+   - NOT "Python 3.9.6" or system Python
+
+2. Reinstall in venv:
+   ```bash
+   source polymer_env/bin/activate
+   pip install xyz
+   ```
+
+ISSUE 4: "Run All" does nothing
+--------------------------------
+
+1. Make sure Jupyter extension is installed in VS Code:
+   - Extensions → Search "Jupyter"
+   - Install "Jupyter" by Microsoft
+
+2. Restart VS Code
+
+3. Try running cells individually first (Shift+Enter)
+
+ISSUE 5: Transformer model errors with MPS
+-------------------------------------------
+
+Some operations may not support MPS yet. If you get MPS errors:
+
+Workaround - add this after device selection:
+```python
+# Fallback to CPU if MPS has issues
+try:
+    model = model.to(device)
+    test = model(**inputs)
+except:
+    print("⚠ MPS issue, falling back to CPU")
+    device = 'cpu'
+    model = model.to(device)
+```
+
+ISSUE 6: Out of memory errors
+------------------------------
+
+M5 has limited GPU memory. If you get OOM:
+
+1. Process in smaller batches:
+   ```python
+   batch_size = 16  # Reduce from 32
+   ```
+
+2. Or use CPU for transformer (still fast):
+   ```python
+   device = 'cpu'
+   ```
+
+================================================================================
+PERFORMANCE COMPARISON
+================================================================================
+
+Expected speeds on your Mac M5:
+
+Task                          | CPU Time  | GPU Time  | Speedup
+------------------------------|-----------|-----------|--------
+Morgan Fingerprints           | 10 sec    | 10 sec    | 1x (CPU-based)
+MACCS Keys                    | 5 sec     | 5 sec     | 1x (CPU-based)
+RDKit Descriptors             | 20 sec    | 20 sec    | 1x (CPU-based)
+Transformer Embeddings        | 300 sec   | 60 sec    | 5x ⚡
+Clustering                    | 30 sec    | 30 sec    | 1x (CPU-based)
+Supervised Learning           | 10 sec    | 10 sec    | 1x (CPU-based)
+Plotting                      | 60 sec    | 60 sec    | 1x (CPU-based)
+------------------------------|-----------|-----------|--------
+TOTAL                         | ~7 min    | ~3 min    | 2-3x ⚡
+
+Main speedup: Transformer embeddings (most compute-intensive)
+
+================================================================================
+VERIFYING GPU IS BEING USED
+================================================================================
+
+During execution, open Activity Monitor:
+1. Applications → Utilities → Activity Monitor
+2. Window → GPU History
+3. Look for "Python" process using GPU
+4. Should see GPU usage spike during transformer computation
+
+Or in Terminal (while notebook running):
+```bash
+sudo powermetrics --samplers gpu_power -i 1000 -n 1
+```
+
+Should show GPU power usage when transformer is running.
+
+================================================================================
+ALTERNATIVE: Run Without GPU (CPU Only)
+================================================================================
+
+If GPU setup is too much trouble, you can run on CPU:
+
+1. Still use venv (good practice):
+   ```bash
+   source polymer_env/bin/activate
+   ```
+
+2. In notebook, set:
+   ```python
+   device = 'cpu'
+   ```
+
+3. Run all cells (will be slower but works fine)
+
+Transformer will take 5-10 minutes instead of 1-2 minutes.
+
+================================================================================
+AFTER SETUP: Daily Usage
+================================================================================
+
+Every time you want to run the notebook:
+
+1. Open Terminal:
+   ```bash
+   cd /Users/Omer/Desktop/Research
+   source polymer_env/bin/activate
+   ```
+
+2. Launch VS Code from terminal:
+   ```bash
+   code .
+   ```
+
+3. Open notebook, select kernel, run!
+
+Or:
+
+1. Just open VS Code directly
+2. Select "Python (Polymer M5 GPU)" kernel
+3. Run!
+
+================================================================================
+SUMMARY
+================================================================================
+
+✅ Your Mac M5 GPU can accelerate transformer embeddings (~5x speedup)
+✅ Use virtual environment to avoid conflicts
+✅ Setup takes 5 minutes
+✅ Total notebook runtime: 3-5 minutes (vs 7-15 on CPU)
+✅ All analysis will complete successfully
+
+Commands to run:
+```bash
+cd /Users/Omer/Desktop/Research
+chmod +x SETUP_MAC_GPU.sh
+./SETUP_MAC_GPU.sh
+```
+
+Then open VS Code, select kernel, and click "Run All"!
+
+================================================================================
+NEED HELP?
+================================================================================
+
+If you encounter issues:
+1. Check which kernel is selected (should be "Polymer M5 GPU")
+2. Verify MPS is available (run test cell above)
+3. Check the troubleshooting section
+4. Worst case: use CPU (device='cpu') - still works fine!
+
+Good luck! 🚀

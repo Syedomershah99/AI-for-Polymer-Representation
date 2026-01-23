@@ -3,27 +3,36 @@ POLYMER REPRESENTATION ANALYSIS - COMPREHENSIVE LINE-BY-LINE CODE DOCUMENTATION
 ================================================================================
 
 Author: Generated Documentation
-Date: 2026-01-13
-Notebook: Polymer_Representation_Updated.ipynb
+Date: 2026-01-23 (Updated)
+Notebook: Polymer_Representation_M5_GPU.ipynb
 
 This document provides an in-depth, line-by-line explanation of every code block
 in the notebook, explaining what each line does, why it's needed, and how it
 contributes to the overall analysis.
 
+REPRESENTATIONS COVERED:
+- Morgan Fingerprints (ECFP) - 2,048 bits
+- MACCS Keys - 167 bits
+- RDKit Descriptors - ~161 features
+- Mordred Descriptors - ~1,613 features (NEW)
+- RDKit+MACCS Combined - ~328 features
+- Transformer Embeddings (polyBERT) - 600 dimensions
+
 ================================================================================
 TABLE OF CONTENTS
 ================================================================================
 
-1. Environment Setup and Imports
+1. Environment Setup and Imports (including Mordred)
 2. Data Loading and Preprocessing
-3. Molecular Representation Generation
+3. Molecular Representation Generation (6 types)
 4. Murtagh Hierarchical Clustering
 5. Clustering Evaluation (K=2 to K=25)
 6. Supervised Learning with 70:30 Splits
-7. Visualization - UMAP and Plots
+7. Visualization - PCA/UMAP and Plots
 8. Contingency Analysis and Heatmaps
 9. Model Persistence and Prediction Functions
 10. Interesting Findings and Observations
+11. 5-Fold Stratified Cross-Validation (with Mordred)
 
 ================================================================================
 SECTION 1: ENVIRONMENT SETUP AND IMPORTS

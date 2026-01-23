@@ -3,9 +3,10 @@ PLOT OBSERVATIONS FOR POWERPOINT PRESENTATION
 ================================================================================
 
 Author: Analysis Documentation
-Date: 2026-01-13
+Date: 2026-01-23 (Updated)
 Source: Polymer Representation Analysis Notebook
 Plots Location: plots/ directory
+Representations: Morgan FP, MACCS Keys, RDKit Desc, Mordred Desc (NEW), RDKit+MACCS, Transformer
 
 This document provides detailed observations and interpretations of all plots
 generated from the polymer representation analysis. Each plot section includes:

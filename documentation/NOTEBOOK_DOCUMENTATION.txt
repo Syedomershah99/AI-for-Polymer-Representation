@@ -16,20 +16,25 @@
 
 This notebook implements a comprehensive polymer representation learning and analysis pipeline. The goal is to:
 
-1. **Generate multiple representations** of polymer molecules using different encoding methods
-2. **Cluster polymers** using hierarchical clustering to discover structural patterns
-3. **Evaluate** how well unsupervised clusters align with known polymer classes
-4. **Train supervised models** to classify polymers based on their representations
-5. **Visualize** the representations and clustering results
+1. **Learn and Compare Polymeric Representations**: Understand how polymer SMILES are converted into numerical features
+2. **Compare Fingerprints, Descriptors, and Embeddings**: See how they shape polymer chemical space
+3. **Evaluate Clustering Quality**: Measure alignment with known polymer classes
+4. **Train Supervised Models**: Classify polymers using different representations
+5. **Visualize Chemical Space**: Use dimensionality reduction for interpretation
 
-### Key Updates from Original Version
+### Key Features (Updated January 2026)
 
-1. **Butina → Murtagh**: Replaced Butina clustering with Murtagh hierarchical clustering for K=2-25
-2. **Representation Storage**: All representations saved to disk in reusable format
-3. **Enhanced Evaluation**: ARI/NMI/Silhouette computed for all K values (2-25)
-4. **70:30 Split**: Changed from 5-fold CV to 5 repeats of 70:30 stratified train/test splits
-5. **Train+Test Metrics**: Evaluate on both training and test sets to assess overfitting
-6. **Extended Visualization**: UMAP plots for K=5,10,15,25 + contingency heatmaps
+1. **Six Representation Types**:
+   - Morgan Fingerprints (ECFP) - 2,048 bits
+   - MACCS Keys - 167 bits
+   - RDKit Descriptors - ~161 features
+   - Mordred Descriptors - ~1,613 features (NEW)
+   - RDKit+MACCS Combined
+   - Transformer Embeddings (polyBERT) - 600 dimensions
+
+2. **Murtagh Hierarchical Clustering**: K=2-25 with comprehensive evaluation
+3. **5-Fold Stratified Cross-Validation**: Rigorous evaluation with Mordred descriptors
+4. **Comprehensive Metrics**: ARI, NMI, Silhouette for clustering; Accuracy, F1-macro for classification
 
 ---
 
@@ -38,7 +43,7 @@ This notebook implements a comprehensive polymer representation learning and ana
 ### 1.1 Dataset Loading
 
 **What**: PI1070 dataset containing 1,077 polymer structures
-**Source**: GitHub repository (AI-for-Polymer-Representation)
+**Source**: Local file (data/PI1070.csv) with GitHub fallback
 **Format**: CSV file with SMILES strings and properties
 
 **Columns**:
@@ -59,10 +64,6 @@ mol = Chem.MolFromSmiles(smiles)  # Parse SMILES
 canonical = Chem.MolToSmiles(mol, canonical=True)  # Get canonical form
 ```
 
-**Technical Jargon**:
-- **SMILES (Simplified Molecular Input Line Entry System)**: Text-based representation of molecular structures
-- **Canonical SMILES**: Unique SMILES string for a molecule (removes ambiguity)
-
 ### 1.3 Data Cleaning
 
 **Steps**:
@@ -76,7 +77,7 @@ canonical = Chem.MolToSmiles(mol, canonical=True)  # Get canonical form
 
 ## Molecular Representations
 
-Molecular representations (also called **molecular descriptors** or **fingerprints**) convert molecules into numerical vectors that machine learning models can process.
+Six types of molecular representations are computed:
 
 ### 2.1 Morgan Fingerprints (ECFP)
 
@@ -91,15 +92,10 @@ Molecular representations (also called **molecular descriptors** or **fingerprin
 2. Hash each substructure to a bit position (0-2047)
 3. Set those bit positions to 1
 
-**Why useful**:
-- Captures local molecular environments
-- Similar molecules have similar fingerprints (measured by Tanimoto similarity)
-- Fast to compute, memory-efficient
-
-**Technical Jargon**:
-- **Circular fingerprint**: Encodes atom neighborhoods at increasing radii
-- **Hashing**: Converting substructure to a number (bit position)
-- **Binary vector**: Array of 0s and 1s
+**Performance** (5-Fold CV - BEST PERFORMER):
+- Train Accuracy: 99.8%
+- Test Accuracy: 93.1% +/- 1.2%
+- Test F1 (macro): 0.797 +/- 0.024
 
 ### 2.2 MACCS Keys
 
@@ -108,510 +104,193 @@ Molecular representations (also called **molecular descriptors** or **fingerprin
 **What**: 166 predefined binary structural patterns
 **Size**: 167 bits (keys 0-166, where key 0 is always 0)
 
-**How it works**:
-- Each bit corresponds to a specific substructure pattern
-- Examples:
-  - Bit 5: Presence of a benzene ring
-  - Bit 79: Presence of a carbonyl group (C=O)
-  - Bit 125: Presence of an aromatic nitrogen
+**Examples of patterns**:
+- Bit 5: Presence of a benzene ring
+- Bit 79: Presence of a carbonyl group (C=O)
+- Bit 125: Presence of an aromatic nitrogen
 
-**Why useful**:
-- **Interpretable**: Each bit has a known chemical meaning
-- **Fast**: Predefined patterns, no learning required
-- **Chemically meaningful**: Captures important functional groups
+**Performance** (5-Fold CV):
+- Train Accuracy: 96.5%
+- Test Accuracy: 89.3% +/- 1.4%
+- Test F1 (macro): 0.792 +/- 0.029
 
-**Difference from Morgan FP**:
-- Morgan: Learned patterns (data-driven)
-- MACCS: Predefined patterns (expert knowledge)
+### 2.3 RDKit Descriptors
 
-### 2.3 RDKit Descriptors + MACCS
+**What**: ~161 molecular descriptors from RDKit
+**Type**: Continuous numerical features (require standardization)
 
-**What**: Combination of molecular descriptors and MACCS keys
-**Size**: ~376 features
-
-**RDKit Descriptors include**:
+**Descriptors include**:
 - **Molecular weight**: Mass of the molecule
 - **LogP**: Lipophilicity (fat vs water solubility)
-- **Number of H-bond donors/acceptors**: Important for intermolecular interactions
+- **Number of H-bond donors/acceptors**: For intermolecular interactions
 - **Topological indices**: Graph-based descriptors of molecular shape
-- **And many more** (~200 descriptors)
+- **Ring counts**: Number and types of rings
 
-**Why combine with MACCS**:
-- RDKit descriptors: Continuous numerical properties
-- MACCS keys: Binary structural patterns
-- Together: Rich representation combining structure and properties
+**Processing**:
+1. Compute all available descriptors
+2. Remove columns with all NaN values
+3. Impute remaining NaNs with column medians
+4. Standardize using StandardScaler (mean=0, std=1)
 
-**Preprocessing**:
-1. Handle NaN/Inf values (replace with 0)
-2. **Standardize** using StandardScaler (mean=0, std=1)
+### 2.4 Mordred Descriptors (NEW)
 
-**Technical Jargon**:
-- **Standardization**: Transform features to have mean 0 and standard deviation 1
-  - Formula: `z = (x - mean) / std`
-  - Why: Puts all features on same scale (important for algorithms sensitive to scale)
+**What**: Comprehensive molecular descriptor calculator
+**Size**: ~1,613 2D descriptors (after filtering from ~1,800 total)
+**Library**: mordred (RDKit extension)
 
-### 2.4 Transformer Embeddings (polyBERT)
+**Descriptor Categories**:
+- Constitutional: Atoms, bonds, molecular formula
+- Topological: Graph-based properties, connectivity indices
+- Electronic: Partial charges, electronegativity
+- CPSA: Charged partial surface area
+- EState: Electrotopological state indices
+- Autocorrelation: Property distributions
+- Information content: Complexity measures
 
-**What**: Deep learning-based representation using a pre-trained language model
+**Processing**:
+1. Compute all 2D descriptors (ignore 3D - no coordinates needed)
+2. Handle Missing/Error values as NaN
+3. Remove all-NaN columns
+4. Remove zero-variance columns
+5. Impute remaining NaNs with column medians
+6. Standardize using StandardScaler
+
+**Why Mordred?**:
+- More comprehensive than RDKit descriptors alone
+- Widely used in QSAR/QSPR modeling
+- Captures diverse chemical properties
+- Well-maintained open-source library
+
+### 2.5 Transformer Embeddings (polyBERT)
+
+**What**: Deep learning-based representation using pre-trained language model
 **Model**: polyBERT (BERT trained on polymer SMILES)
 **Size**: 600-dimensional dense vector
 
 **How it works**:
-1. **Tokenization**: Split SMILES into tokens (similar to words in text)
-   - Example: `CC(C)O` → `['C', 'C', '(', 'C', ')', 'O']`
-2. **Embedding**: Feed tokens through transformer model
-3. **Pooling**: Use [CLS] token embedding as polymer representation
+1. Tokenize SMILES into subunits
+2. Pass through transformer encoder
+3. Use [CLS] token embedding as molecule representation
 
-**Why useful**:
-- **Learned representation**: Trained on millions of molecules
-- **Context-aware**: Considers relationships between atoms
-- **Dense**: Not sparse like binary fingerprints
-- **State-of-the-art**: Often best performance for downstream tasks
+**Performance** (5-Fold CV):
+- Train Accuracy: 100.0% (perfect - indicates overfitting)
+- Test Accuracy: 90.5% +/- 1.4%
+- Test F1 (macro): 0.757 +/- 0.041 (HIGHEST VARIANCE)
 
-**Technical Jargon**:
-- **BERT**: Bidirectional Encoder Representations from Transformers
-- **Transformer**: Neural network architecture with attention mechanism
-- **[CLS] token**: Special token whose embedding represents the entire sequence
-- **Attention**: Mechanism allowing model to focus on relevant parts
-- **Embedding**: Dense numerical representation (vs sparse binary)
+**Note**: Despite being the most sophisticated, transformer shows worst generalization due to overfitting.
 
-**Preprocessing**:
-- Standardize embeddings (mean=0, std=1) for fair comparison
+### 2.6 Combined Representation (RDKit+MACCS)
 
----
+**What**: Concatenation of RDKit descriptors and MACCS keys
+**Size**: ~328 features (~161 RDKit + 167 MACCS)
 
-## Murtagh Hierarchical Clustering
+**Performance** (70:30 Split):
+- Test Accuracy: 92.0% +/- 2.0%
+- Test F1 (macro): 0.823 +/- 0.047 (BEST F1)
 
-### 4.1 Why Hierarchical Clustering?
-
-**Goal**: Group similar polymers together based on molecular structure
-
-**Advantages over other methods**:
-- **No need to specify K upfront**: Creates a hierarchy, can cut at any level
-- **Deterministic**: Same results every time (vs K-means which depends on initialization)
-- **Visual interpretation**: Dendrogram shows relationships
-
-**Why "Murtagh"?**
-- Named after statistician Fionn Murtagh
-- Refers to a family of hierarchical clustering algorithms
-- We use **average linkage** (also called UPGMA - Unweighted Pair Group Method with Arithmetic mean)
-
-### 4.2 Tanimoto Distance Matrix
-
-**Input for clustering**: Pairwise distances between all polymers
-
-**Tanimoto Similarity** (for binary fingerprints):
-```
-Tanimoto(A, B) = (A ∩ B) / (A ∪ B)
-               = (# bits set in both) / (# bits set in either)
-```
-
-**Tanimoto Distance**:
-```
-Distance(A, B) = 1 - Tanimoto(A, B)
-```
-
-**Why Tanimoto for fingerprints?**
-- Jaccard-like similarity designed for binary data
-- Range: 0 (identical) to 1 (completely different)
-- Standard in cheminformatics
-
-**Computational Cost**:
-- N = 1,077 polymers
-- Matrix size: 1,077 × 1,077 = 1,159,929 distances
-- Symmetric: Only need to compute half
-
-### 4.3 Linkage Methods
-
-**Average Linkage (UPGMA)**:
-```
-Distance(Cluster A, Cluster B) = average of all pairwise distances
-```
-
-**Why average linkage?**
-- **Balanced**: Not too sensitive to outliers (vs single linkage)
-- **Not too restrictive**: More flexible than complete linkage
-- **Widely used**: Standard choice for chemical clustering
-
-**Alternative methods**:
-- **Single linkage**: Minimum distance (sensitive to noise)
-- **Complete linkage**: Maximum distance (creates tight clusters)
-- **Ward**: Minimizes within-cluster variance (only for Euclidean distance)
-
-### 4.4 Clustering Process
-
-**Algorithm**:
-1. Start with each polymer as its own cluster (N clusters)
-2. Find two closest clusters
-3. Merge them
-4. Repeat until one cluster remains
-
-**Output**: Linkage matrix encoding the merge tree
-
-**Cutting the tree**:
-- For K=2: One cut produces 2 clusters
-- For K=25: More cuts produce 25 clusters
-- `fcluster(linkage_matrix, k, criterion='maxclust')`
-
-### 4.5 K Values: 2 to 25
-
-**Why this range?**
-- K=2: Most general grouping
-- K=25: Fine-grained clustering
-- Dataset size: 1,077 polymers / 25 ≈ 43 polymers per cluster (reasonable)
-
-**Trade-off**:
-- **Low K**: Broad groups, may mix different classes
-- **High K**: Specific groups, but may oversegment
+**Note**: Shows variable performance in different evaluation settings.
 
 ---
 
 ## Clustering Evaluation
 
-### 5.1 Metrics Overview
+### Metrics Used
 
-We evaluate clustering quality using three complementary metrics:
+| Metric | Type | Range | Optimal | What it Measures |
+|--------|------|-------|---------|------------------|
+| ARI | External | -1 to 1 | 1 | Agreement with true labels |
+| NMI | External | 0 to 1 | 1 | Information shared with labels |
+| Silhouette | Internal | -1 to 1 | 1 | Cluster separation quality |
 
-| Metric | Type | Range | Optimal | Needs Labels? |
-|--------|------|-------|---------|---------------|
-| ARI | External | -1 to 1 | 1 | Yes |
-| NMI | External | 0 to 1 | 1 | Yes |
-| Silhouette | Internal | -1 to 1 | 1 | No |
+### Key Clustering Results (Morgan FP)
 
-### 5.2 Adjusted Rand Index (ARI)
-
-**What**: Measures agreement between predicted clusters and true labels
-**Formula**: Complicated, but conceptually:
-- Count pairs of polymers in same/different clusters
-- Adjust for random chance
-
-**Interpretation**:
-- **ARI = 1**: Perfect match (all polymers correctly grouped)
-- **ARI = 0**: Random clustering (no better than chance)
-- **ARI < 0**: Worse than random
-
-**Why "adjusted"?**
-- Raw Rand Index doesn't account for chance
-- ARI = expected value of 0 for random clustering
-
-**Example**:
+**K=5 PHENOMENON (Critical Discovery)**:
 ```
-True labels:  [A, A, B, B, C, C]
-Clusters:     [1, 1, 2, 2, 3, 3]  → ARI = 1.0 (perfect)
+K=4: ARI=0.007, NMI=0.048, Silhouette=0.068
+K=5: ARI=0.230, NMI=0.357, Silhouette=0.113
 
-Clusters:     [1, 2, 1, 2, 1, 2]  → ARI ≈ 0.0 (random)
+Improvement at K=5:
+- ARI: 33x increase!
+- NMI: 7.4x increase!
+- Silhouette: 66% increase!
 ```
 
-### 5.3 Normalized Mutual Information (NMI)
+This dramatic jump suggests exactly 5 fundamental structural families in the polymer dataset.
 
-**What**: Measures shared information between clustering and true labels
-**Based on**: Information theory (entropy)
+**Best K=25**:
+- ARI: 0.518 (52% agreement with true classes)
+- NMI: 0.602 (60% information sharing)
+- Silhouette: 0.122 (low, indicating overlapping clusters)
 
-**Intuition**:
-- If I tell you the cluster, how much does it reduce uncertainty about the true class?
+### Interpretation
 
-**Interpretation**:
-- **NMI = 1**: Clustering perfectly predicts class
-- **NMI = 0**: Clustering provides no information about class
-
-**Advantages**:
-- Less sensitive to cluster size imbalance than ARI
-- Symmetric: NMI(clusters, labels) = NMI(labels, clusters)
-
-**Technical Jargon**:
-- **Entropy**: Measure of uncertainty
-  - H(X) = -Σ p(x) log p(x)
-- **Mutual Information**: Reduction in entropy
-  - I(X;Y) = H(X) - H(X|Y)
-
-### 5.4 Silhouette Score
-
-**What**: Internal cluster quality metric (doesn't use true labels)
-
-**For each polymer**:
-1. **a**: Average distance to other polymers in same cluster (cohesion)
-2. **b**: Average distance to polymers in nearest other cluster (separation)
-3. **Silhouette = (b - a) / max(a, b)**
-
-**Interpretation**:
-- **s ≈ 1**: Polymer is well-clustered (close to cluster, far from others)
-- **s ≈ 0**: Polymer is on border between clusters
-- **s < 0**: Polymer may be in wrong cluster
-
-**Dataset Silhouette**: Average over all polymers
-
-**Why useful?**
-- Doesn't require true labels
-- Combines cohesion and separation
-- Per-polymer scores help identify misassigned polymers
-
-### 5.5 Interpreting Results
-
-**Best K selection**:
-- Plot all three metrics vs K
-- Look for:
-  - **Peaks**: Local maxima suggest good K values
-  - **Elbows**: Diminishing returns beyond certain K
-  - **Agreement**: Multiple metrics agree on same K
-
-**Trade-offs**:
-- ARI/NMI favor K matching number of true classes
-- Silhouette may prefer different K (purely structural similarity)
+- **K=5**: Best for identifying major structural families
+- **K=17-19**: Best balance of internal structure and class alignment
+- **K=25**: Maximum alignment with polymer classes
+- **Low Silhouette (~0.12)**: Clusters overlap significantly, fuzzy boundaries
 
 ---
 
 ## Supervised Learning
 
-### 6.1 Goal and Setup
+### 5-Fold Stratified Cross-Validation Results (PRIMARY EVALUATION)
 
-**Goal**: Predict polymer class from molecular representation
+| Representation | Train Acc | Test Acc | Test F1 (macro) | Notes |
+|----------------|-----------|----------|-----------------|-------|
+| **Morgan FP** | 99.8% | **93.1% +/- 1.2%** | 0.797 +/- 0.024 | BEST & MOST STABLE |
+| MACCS Keys | 96.5% | 89.3% +/- 1.4% | 0.792 +/- 0.029 | Competitive |
+| Transformer | 100.0% | 90.5% +/- 1.4% | 0.757 +/- 0.041 | Overfits |
+| RDKit+MACCS | 24.4%* | 24.4% +/- 0.2%* | 0.025* | *Preprocessing issue |
 
-**Classifier**: Logistic Regression
-- **Why?**: Simple, interpretable baseline
-- **Alternative**: Random Forest, SVM (can be explored)
+### 70:30 Train-Test Split Results (5 Repeats)
 
-**Target**: `polymer_class` column (categorical labels)
+| Representation | Train Acc | Test Acc | Test F1 (macro) |
+|----------------|-----------|----------|-----------------|
+| **Morgan FP** | 99.8% | **92.9% +/- 1.4%** | 0.758 +/- 0.069 |
+| MACCS Keys | 96.4% | 88.9% +/- 1.8% | 0.750 +/- 0.047 |
+| RDKit+MACCS | 99.8% | 92.0% +/- 2.0% | **0.823 +/- 0.047** |
+| Transformer | 100.0% | 91.3% +/- 1.5% | 0.735 +/- 0.074 |
 
-### 6.2 Train-Test Split Strategy
+### Key Findings
 
-**Previous approach**: 5-fold cross-validation (CV)
-- 80% train, 20% test (per fold)
-- Train/test 5 times with different splits
-- Report average test performance
+1. **Morgan FP Wins**: Most stable and generalizable (93.1% +/- 1.2% in 5-fold CV)
+2. **Transformer Paradox**: Perfect training (100%) but only 90.5% test - severe overfitting
+3. **Simple Beats Complex**: 2048-bit binary fingerprints outperform 600-dim dense embeddings
+4. **Overfitting Pervasive**: All models show 7-10% train-test gap
+5. **RDKit+MACCS Best F1**: In 70:30 split, achieves 0.823 F1 (best for imbalanced classes)
 
-**New approach**: 5 repeats of 70:30 stratified splits
-- 70% train, 30% test (each repeat)
-- Train/test 5 times with different random seeds
-- Report **both** train and test performance
+### Structure-Function Gap
 
-**Why the change?**
+- **Clustering (unsupervised)**: 52% agreement (ARI=0.518)
+- **Supervised learning**: 93% accuracy
+- **Gap**: 41 percentage points!
 
-| Aspect | 5-Fold CV | 5× 70:30 Split |
-|--------|-----------|-----------------|
-| Train size | 80% | 70% |
-| Test size | 20% | 30% |
-| Total data usage | 100% (all used) | ~100% (5 repeats cover most) |
-| Overfitting detection | Hard | Easy (compare train vs test) |
-| Variance estimation | Good | Good |
-| Interpretation | Complex | Simple |
-
-**Key advantage**: Can directly compare train vs test accuracy to detect overfitting
-
-### 6.3 Stratified Splitting
-
-**What**: Split while preserving class distribution
-
-**Example**:
-```
-Original:     Class A: 60%, Class B: 30%, Class C: 10%
-Train (70%):  Class A: 60%, Class B: 30%, Class C: 10%  ← same distribution
-Test (30%):   Class A: 60%, Class B: 30%, Class C: 10%  ← same distribution
-```
-
-**Why stratified?**
-- Ensures both train and test have all classes
-- Maintains class balance
-- More reliable performance estimates (especially for minority classes)
-
-**Implementation**:
-```python
-train_test_split(X, y, test_size=0.30, stratify=y, random_state=42+i)
-```
-
-### 6.4 Logistic Regression
-
-**What**: Linear classifier for categorical outcomes
-
-**How it works**:
-1. Learn weights w for each feature
-2. Compute score: score = w₁×feature₁ + w₂×feature₂ + ... + bias
-3. Apply softmax to get probabilities for each class
-4. Predict class with highest probability
-
-**For multi-class**:
-- One-vs-Rest (OvR): Train binary classifier for each class
-- Or multinomial logistic regression (single model)
-
-**Parameters**:
-- `max_iter=1000`: Maximum iterations for optimization
-- `solver='lbfgs'`: Optimization algorithm (Limited-memory BFGS)
-- `random_state=42`: For reproducibility
-
-**Why Logistic Regression as baseline?**
-- **Simple**: Easy to understand and interpret
-- **Fast**: Trains quickly even on large datasets
-- **Baseline**: If complex model doesn't beat this, it's not useful
-- **Regularization**: Can add penalties to prevent overfitting
-
-### 6.5 Evaluation Metrics
-
-**Accuracy**:
-```
-Accuracy = (# correct predictions) / (# total predictions)
-```
-- Simple to understand
-- Problem: Misleading for imbalanced classes
-
-**F1-Score (Macro)**:
-```
-F1 = 2 × (Precision × Recall) / (Precision + Recall)
-Macro F1 = average of F1 scores for each class
-```
-
-**Why Macro F1?**
-- Treats all classes equally (good for imbalanced data)
-- Captures both precision and recall
-- More informative than accuracy alone
-
-**Precision**: Of predicted positives, how many are correct?
-**Recall**: Of actual positives, how many did we find?
-
-**Example**:
-```
-Class A (common):  F1 = 0.95
-Class B (medium):  F1 = 0.80
-Class C (rare):    F1 = 0.60
-
-Macro F1 = (0.95 + 0.80 + 0.60) / 3 = 0.78
-```
-
-### 6.6 Assessing Overfitting
-
-**Compare train vs test performance**:
-
-| Scenario | Train Acc | Test Acc | Interpretation |
-|----------|-----------|----------|----------------|
-| Good fit | 0.90 | 0.88 | Model generalizes well |
-| Overfitting | 0.99 | 0.70 | Memorized training data |
-| Underfitting | 0.60 | 0.58 | Model too simple |
-
-**Overfitting indicators**:
-- Large gap between train and test accuracy
-- Very high train accuracy (>0.95)
-- High variance across splits
-
-**Solutions for overfitting**:
-- Regularization (L1/L2 penalty)
-- More training data
-- Feature selection
-- Simpler model
-
-### 6.7 Comparing Representations
-
-**Goal**: Which representation is best for polymer classification?
-
-**Expected results**:
-- **Transformer**: Usually best (learned features)
-- **RDKit+MACCS**: Good (many features)
-- **Morgan FP**: Solid (captures structure)
-- **MACCS Keys**: Decent (fewer features, but interpretable)
-
-**Factors affecting performance**:
-- **Dimensionality**: More features ≠ always better (curse of dimensionality)
-- **Information content**: Does representation capture class-discriminating features?
-- **Redundancy**: Correlated features may hurt simple models
+This means structure captures ~50-60% of class information, with ~40-50% coming from non-structural factors.
 
 ---
 
 ## Visualization
 
-### 7.1 UMAP Dimensionality Reduction
+### PCA Visualization
 
-**Full Name**: Uniform Manifold Approximation and Projection
+- 2D projections of high-dimensional representations
+- PC1 + PC2 capture only 20-25% of total variance
+- Shows overlapping clusters (confirms low silhouette scores)
+- Consistent structure across all representations
 
-**Goal**: Reduce high-dimensional data to 2D for visualization
+### Contingency Heatmaps
 
-**Why UMAP?**
-- **Better than PCA**: Captures non-linear relationships
-- **Better than t-SNE**: Preserves both local AND global structure
-- **Faster than t-SNE**: Especially for large datasets
-- **Deterministic**: Same result with same random seed
+- Show cluster-class relationships for K=5, 10, 15, 25
+- Average cluster purity: 50-70%
+- Many-to-many relationship between clusters and classes
+- No pure clusters exist
 
-**How it works (simplified)**:
-1. Build graph of nearest neighbors in high-dimensional space
-2. Optimize 2D embedding to preserve graph structure
-3. Keep nearby points close, distant points far
+### Dendrograms
 
-**Parameters**:
-- `n_neighbors=25`: How many neighbors to consider (local vs global balance)
-- `min_dist=0.2`: Minimum distance between points in 2D (controls compactness)
-- `metric`: Distance function
-  - `'jaccard'`: For binary fingerprints (Morgan, MACCS)
-  - `'euclidean'`: For continuous features (RDKit+MACCS, Transformer)
-
-**Interpretation of UMAP plots**:
-- **Clusters**: Groups of nearby points
-- **Colors**:
-  - By cluster ID: Shows unsupervised grouping
-  - By true class: Shows if clusters match classes
-- **Distances**: Relative (not absolute)
-- **Shape**: Don't over-interpret exact positions
-
-**Technical Jargon**:
-- **Manifold**: Lower-dimensional surface embedded in high-dimensional space
-- **Topology**: Study of shapes and spaces (UMAP preserves topological structure)
-
-### 7.2 Selected K Values: 5, 10, 15, 25
-
-**Why these K values?**
-- **K=5**: Coarse grouping (may match major classes)
-- **K=10**: Medium granularity
-- **K=15**: Fine-grained
-- **K=25**: Very detailed clustering
-
-**What to look for**:
-- Do clusters form distinct visual groups?
-- Do different representations show similar clustering patterns?
-- How does clustering change with K?
-
-### 7.3 Contingency Heatmaps
-
-**What**: Matrix showing relationship between clusters and true classes
-
-**Axes**:
-- **Rows**: Cluster IDs (1, 2, 3, ...)
-- **Columns**: True polymer classes (A, B, C, ...)
-- **Values**: Count of polymers in each cluster-class combination
-
-**Perfect clustering**: Diagonal matrix (each cluster = one class)
-
-**Example**:
-```
-            Class A  Class B  Class C
-Cluster 1   100      5        0       ← Mostly A (good purity)
-Cluster 2   10       80       5       ← Mostly B (good purity)
-Cluster 3   0        0        90      ← All C (perfect purity)
-```
-
-**Interpretation**:
-- **Diagonal dominance**: Good alignment
-- **Scattered values**: Poor alignment
-- **High off-diagonal**: Clusters mix multiple classes
-
-### 7.4 Purity Analysis
-
-**Cluster Purity**:
-```
-Purity = (# of majority class) / (# total in cluster)
-```
-
-**Example**:
-```
-Cluster 5: 43 polymers
-  - 30 are Class A
-  - 10 are Class B
-  - 3 are Class C
-  → Purity = 30/43 = 69.8%
-```
-
-**Interpretation**:
-- **High purity (>80%)**: Cluster is homogeneous
-- **Medium purity (60-80%)**: Some mixing
-- **Low purity (<60%)**: Heterogeneous cluster
-
-**Relationship to ARI/NMI**:
-- High average purity → High ARI/NMI
-- But purity alone doesn't account for cluster size matching
+- Visualize hierarchical clustering structure
+- Confirm K=5 major branches
+- Show merge distances and relationships
+- Color coding at 70% tree height reveals 5 groups
 
 ---
 
@@ -619,218 +298,59 @@ Cluster 5: 43 polymers
 
 ### Chemistry Terms
 
-**SMILES (Simplified Molecular Input Line Entry System)**
-- Text representation of molecular structure
-- Example: `CCO` = ethanol (CH₃CH₂OH)
-- Encodes atoms, bonds, branches, rings
+**SMILES**: Simplified Molecular Input Line Entry System - text representation of molecular structure (e.g., `CCO` = ethanol)
 
-**Fingerprint**
-- Binary or numeric vector representing molecular structure
-- Like a molecular "barcode"
-- Used for similarity searching and machine learning
+**Fingerprint**: Binary or numeric vector representing molecular structure - like a molecular "barcode"
 
-**Substructure**
-- Part of a molecule (e.g., benzene ring, hydroxyl group)
-- Building blocks for molecular fingerprints
+**Tanimoto Similarity**: Similarity = intersection / union for binary vectors. Range 0-1.
 
-**Tanimoto Similarity/Coefficient**
-- Similarity measure for binary fingerprints
-- Range: 0 (no overlap) to 1 (identical)
-- Standard in cheminformatics
+**MACCS Keys**: 166 predefined structural patterns developed by MDL
 
-**Morgan/ECFP (Extended-Connectivity Fingerprints)**
-- Circular fingerprints based on atom neighborhoods
-- Captures local molecular environment
-- Radius determines how far to look from each atom
-
-**MACCS Keys**
-- 166 predefined structural patterns
-- Each bit = specific chemical feature
-- Developed by MDL (now part of Biovia)
+**Mordred**: Open-source molecular descriptor calculator (~1,800 2D/3D descriptors)
 
 ### Machine Learning Terms
 
-**Supervised Learning**
-- Learning from labeled data
-- Goal: Predict labels for new data
-- Example: Classify polymer based on structure
+**Stratified Split**: Splitting data while preserving class distribution in train and test sets
 
-**Unsupervised Learning**
-- Learning from unlabeled data
-- Goal: Discover patterns
-- Example: Cluster similar polymers
+**Cross-Validation**: Multiple train/test splits for robust performance estimation
 
-**Feature**
-- Input variable for machine learning model
-- Example: A bit in fingerprint, a molecular descriptor
+**Overfitting**: Model memorizes training data, poor generalization to new data
 
-**Label / Target / Class**
-- Output variable to predict
-- Example: Polymer class (A, B, C)
+**ARI (Adjusted Rand Index)**: Clustering agreement metric, adjusted for chance (0 = random, 1 = perfect)
 
-**Training Set**
-- Data used to train model (learn parameters)
+**NMI (Normalized Mutual Information)**: Information-theoretic metric (0 = no info, 1 = perfect)
 
-**Test Set**
-- Data used to evaluate model (not seen during training)
-- Simulates real-world performance
+**Silhouette Score**: Internal cluster quality (-1 = wrong cluster, 0 = boundary, 1 = well-clustered)
 
-**Overfitting**
-- Model memorizes training data instead of learning patterns
-- Symptoms: High train accuracy, low test accuracy
-- Causes: Too complex model, too little data, too many features
+### Key Numbers to Remember
 
-**Underfitting**
-- Model too simple to capture patterns
-- Symptoms: Low train and test accuracy
-- Causes: Too simple model, missing features
-
-**Cross-Validation**
-- Technique to estimate model performance
-- Split data multiple ways, average results
-- Reduces dependence on single train/test split
-
-**Stratified Splitting**
-- Splitting data while preserving class distribution
-- Ensures all splits are representative
-
-**Regularization**
-- Penalty on model complexity
-- Prevents overfitting
-- Types: L1 (Lasso), L2 (Ridge)
-
-### Clustering Terms
-
-**Hierarchical Clustering**
-- Builds tree of clusters (dendrogram)
-- Bottom-up (agglomerative) or top-down (divisive)
-- Can cut at any level to get K clusters
-
-**Linkage**
-- How to measure distance between clusters
-- Average: Mean of all pairwise distances
-- Single: Minimum distance (closest points)
-- Complete: Maximum distance (furthest points)
-
-**Dendrogram**
-- Tree diagram showing cluster hierarchy
-- Height = distance at which clusters merge
-- Cut horizontally to get K clusters
-
-**Silhouette Score**
-- Measure of cluster quality
-- Range: -1 to 1 (higher better)
-- Per-sample or dataset average
-
-### Distance Metrics
-
-**Euclidean Distance**
-- Straight-line distance in n-dimensional space
-- Formula: √(Σ(xᵢ - yᵢ)²)
-- For continuous features
-
-**Jaccard Distance / Tanimoto Distance**
-- For binary features (fingerprints)
-- 1 - (intersection / union)
-- Ignores features absent in both
-
-**Cosine Distance**
-- Based on angle between vectors
-- Ignores magnitude, focuses on direction
-- Good for high-dimensional sparse data
-
-### Dimensionality Reduction
-
-**PCA (Principal Component Analysis)**
-- Linear dimensionality reduction
-- Finds directions of maximum variance
-- Fast, but assumes linear relationships
-
-**t-SNE (t-Distributed Stochastic Neighbor Embedding)**
-- Non-linear dimensionality reduction
-- Great for visualization
-- Slow, doesn't preserve global structure well
-
-**UMAP (Uniform Manifold Approximation and Projection)**
-- Non-linear dimensionality reduction
-- Faster than t-SNE
-- Preserves both local and global structure
-
-### Evaluation Metrics
-
-**Precision**
-- Of predicted positives, how many are correct?
-- TP / (TP + FP)
-
-**Recall (Sensitivity)**
-- Of actual positives, how many did we find?
-- TP / (TP + FN)
-
-**F1-Score**
-- Harmonic mean of precision and recall
-- 2 × (P × R) / (P + R)
-
-**Macro Average**
-- Average of per-class metrics
-- Treats all classes equally
-
-**Weighted Average**
-- Weighted average by class size
-- Emphasizes common classes
-
-### Information Theory
-
-**Entropy**
-- Measure of uncertainty/randomness
-- H(X) = -Σ p(x) log₂ p(x)
-- Higher = more uncertain
-
-**Mutual Information**
-- How much knowing X reduces uncertainty about Y
-- I(X;Y) = H(X) - H(X|Y)
-- Measures dependence between variables
-
-**Normalized Mutual Information (NMI)**
-- Mutual information divided by average entropy
-- Range: 0 to 1
-- Accounts for different numbers of clusters/classes
-
-### Statistical Terms
-
-**Mean (Average)**
-- Sum of values / number of values
-- Central tendency
-
-**Standard Deviation (Std)**
-- Measure of spread/variability
-- √(Σ(xᵢ - mean)²) / n
-- Larger = more variable
-
-**Standardization (Z-score)**
-- Transform to mean=0, std=1
-- z = (x - mean) / std
-- Puts features on same scale
-
-**Stratification**
-- Ensuring subgroups are proportionally represented
-- Example: Maintain class balance in train/test split
+- **Dataset**: 1,077 polymers, 17 classes
+- **Morgan FP**: 2,048 bits
+- **MACCS Keys**: 167 bits
+- **RDKit Descriptors**: ~161 features
+- **Mordred Descriptors**: ~1,613 features (after filtering)
+- **Transformer**: 600 dimensions
+- **Best Test Accuracy**: 93.1% (Morgan FP, 5-fold CV)
+- **Best Clustering K**: K=5 (families) or K=25 (max alignment)
+- **Structure-Function Gap**: 41% (93% supervised - 52% clustering)
 
 ---
 
 ## Summary
 
-This notebook provides a comprehensive analysis of polymer representations:
+This notebook provides comprehensive polymer representation analysis with the following key findings:
 
-1. **Multiple representations**: Morgan FP, MACCS, RDKit+MACCS, Transformer
-2. **Hierarchical clustering**: Murtagh method with K=2-25
-3. **Rigorous evaluation**: ARI, NMI, Silhouette for all K values
-4. **Supervised learning**: 70:30 splits, train+test evaluation
-5. **Rich visualization**: UMAP plots, contingency heatmaps, metric curves
+1. **Six representations compared**: Morgan FP, MACCS, RDKit, Mordred, RDKit+MACCS, Transformer
+2. **K=5 Phenomenon**: Five fundamental structural families discovered
+3. **Morgan FP Wins**: 93.1% accuracy, most stable across folds
+4. **Transformer Overfits**: 100% train, 90.5% test - simple beats complex
+5. **Structure-Function Gap**: 41% (clustering 52% vs supervised 93%)
+6. **Fuzzy Clusters**: 50-70% purity, overlapping boundaries
 
-The systematic approach allows us to:
-- Compare representation quality
-- Identify optimal clustering granularity
-- Understand cluster-class relationships
-- Assess model generalization
+### Practical Recommendations
 
-All code is fully documented with explanations of technical concepts.
+- Use **Morgan FP** for production (best generalization)
+- Use **K=5** for exploratory analysis (structural families)
+- Add **regularization** to prevent overfitting
+- Consider **two-stage approach**: cluster then classify
+- **Mordred descriptors** provide comprehensive chemical features for QSAR

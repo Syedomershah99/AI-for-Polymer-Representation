@@ -2,10 +2,10 @@
 KEY FINDINGS AND INSIGHTS FROM POLYMER REPRESENTATION ANALYSIS
 ================================================================================
 
-Date: 2026-01-13
+Date: 2026-01-23 (Updated)
 Dataset: PI1070 (1,077 polymers)
-Methods: Hierarchical Clustering + Supervised Learning
-Representations: Morgan FP, MACCS Keys, RDKit+MACCS, Transformer
+Methods: Hierarchical Clustering + 5-Fold CV + Supervised Learning
+Representations: Morgan FP, MACCS Keys, RDKit Desc, Mordred Desc (NEW), RDKit+MACCS, Transformer
 
 This document summarizes the most interesting and important findings from the
 comprehensive polymer representation analysis.
@@ -56,11 +56,11 @@ STATISTICAL SIGNIFICANCE:
 2. ⭐⭐⭐ THE TRANSFORMER PARADOX - COMPLEXITY HURTS GENERALIZATION
    ---------------------------------------------------------------
 
-WHAT WE FOUND:
+WHAT WE FOUND (5-Fold CV - Updated):
 - Transformer achieves PERFECT 100% training accuracy
-- But WORST test performance (91.3% accuracy, 0.735 F1)
-- Largest train-test gap (8.7% for accuracy, 0.265 for F1)
-- Simple Morgan FP beats transformer (92.9% > 91.3%)
+- But WORST test performance (90.5% +/- 1.4% accuracy, 0.757 +/- 0.041 F1)
+- Highest F1 variance (0.041) - unstable predictions
+- Simple Morgan FP beats transformer (93.1% +/- 1.2% > 90.5% +/- 1.4%)
 
 WHY IT'S COUNTERINTUITIVE:
 ★ Transformers are supposed to be state-of-the-art
